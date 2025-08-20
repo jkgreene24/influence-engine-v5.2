@@ -481,30 +481,61 @@ export default function QuickQuiz() {
       connector: 0
     };
 
+    console.log("=== CALCULATING SCORES ===");
+    console.log("Current answers:", answers);
+
     Object.entries(answers).forEach(([questionId, answerId]) => {
+      console.log(`\n--- Processing ${questionId}, Answer ${answerId} ---`);
+      
       const question = randomizedQuestions.find(q => q.id === questionId);
-      if (!question) return;
+      if (!question) {
+        console.log(`❌ Question ${questionId} not found in randomizedQuestions`);
+        return;
+      }
 
       const answer = question.answers.find(a => a.id === answerId);
-      if (!answer) return;
+      if (!answer) {
+        console.log(`❌ Answer ${answerId} not found in question ${questionId}`);
+        return;
+      }
+
+      console.log(`✅ Found answer: "${answer.text}"`);
+      console.log(`   Styles: ${answer.styles.join(', ')}`);
+      console.log(`   isMix: ${answer.isMix}`);
+      console.log(`   isNone: ${answer.isNone}`);
+      console.log(`   Analytics tag: ${answer.analyticsTag}`);
 
       if (answer.isMix && answer.styles.length > 0) {
         // Split +1 evenly across styles
         const pointsPerStyle = 1 / answer.styles.length;
+        console.log(`   📊 MIX answer - splitting ${pointsPerStyle} points per style`);
         answer.styles.forEach(style => {
           if (scores[style as keyof typeof scores] !== undefined) {
+            const oldScore = scores[style as keyof typeof scores];
             scores[style as keyof typeof scores] += pointsPerStyle;
+            console.log(`   ➕ ${style}: ${oldScore} → ${scores[style as keyof typeof scores]} (+${pointsPerStyle})`);
           }
         });
       } else if (!answer.isNone && answer.styles.length > 0) {
         // Style answers = +1 to each mapped style
+        console.log(`   📊 STYLE answer - adding 1 point per style`);
         answer.styles.forEach(style => {
           if (scores[style as keyof typeof scores] !== undefined) {
+            const oldScore = scores[style as keyof typeof scores];
             scores[style as keyof typeof scores] += 1;
+            console.log(`   ➕ ${style}: ${oldScore} → ${scores[style as keyof typeof scores]} (+1)`);
           }
         });
+      } else {
+        console.log(`   ⚠️ No points added (isNone: ${answer.isNone}, styles: ${answer.styles.length})`);
       }
     });
+
+    console.log("\n=== FINAL SCORES ===");
+    Object.entries(scores).forEach(([style, score]) => {
+      console.log(`${style}: ${score}`);
+    });
+    console.log("=====================\n");
 
     return scores;
   };
@@ -520,34 +551,66 @@ export default function QuickQuiz() {
     const [primaryStyle, primaryScore] = sortedScores[0];
     const [secondaryStyle, secondaryScore] = sortedScores[1];
 
-    // If top two are within 1 point OR scores are scattered across 3+
+    // Only trigger Q10 if top two are within 1 point
+    // Remove the "scattered across 3+" condition as it's causing false positives
     const withinOnePoint = Math.abs(primaryScore - secondaryScore) <= 1;
-    const scatteredAcrossThree = sortedScores.length >= 3;
 
-    return withinOnePoint || scatteredAcrossThree;
+    console.log(`\n=== Q10 DECISION ===`);
+    console.log(`Primary: ${primaryStyle} (${primaryScore})`);
+    console.log(`Secondary: ${secondaryStyle} (${secondaryScore})`);
+    console.log(`Score difference: ${Math.abs(primaryScore - secondaryScore)}`);
+    console.log(`Within 1 point: ${withinOnePoint}`);
+    console.log(`Q10 needed: ${withinOnePoint}`);
+    console.log(`=====================\n`);
+
+    return withinOnePoint;
   };
 
   // Calculate final result
   const calculateResult = (scores: Record<string, number>, q10Answer?: string): QuizResult => {
+    console.log("=== CALCULATING FINAL RESULT ===");
+    console.log("Initial scores:", scores);
+    console.log("Q10 answer:", q10Answer);
+    
     let finalScores = { ...scores };
 
     // Add Q10 score if provided
     if (q10Answer) {
+      console.log("\n--- Processing Q10 ---");
       const q10AnswerObj = q10Question.answers.find(a => a.id === q10Answer);
       if (q10AnswerObj) {
+        console.log(`✅ Q10 answer: "${q10AnswerObj.text}"`);
+        console.log(`   Styles: ${q10AnswerObj.styles.join(', ')}`);
+        console.log(`   Analytics tag: ${q10AnswerObj.analyticsTag}`);
+        
         q10AnswerObj.styles.forEach(style => {
           if (finalScores[style as keyof typeof finalScores] !== undefined) {
+            const oldScore = finalScores[style as keyof typeof finalScores];
             finalScores[style as keyof typeof finalScores] += 1;
+            console.log(`   ➕ ${style}: ${oldScore} → ${finalScores[style as keyof typeof finalScores]} (+1)`);
           }
         });
+      } else {
+        console.log(`❌ Q10 answer ${q10Answer} not found`);
       }
     }
+
+    console.log("\n--- Final scores after Q10 ---");
+    Object.entries(finalScores).forEach(([style, score]) => {
+      console.log(`${style}: ${score}`);
+    });
 
     const sortedScores = Object.entries(finalScores)
       .sort(([, a], [, b]) => b - a)
       .filter(([, score]) => score > 0);
 
+    console.log("\n--- Sorted scores (filtered) ---");
+    sortedScores.forEach(([style, score], index) => {
+      console.log(`${index + 1}. ${style}: ${score}`);
+    });
+
     if (sortedScores.length === 0) {
+      console.log("⚠️ No scores > 0, defaulting to catalyst");
       return {
         primary: "catalyst",
         isBlend: false,
@@ -560,13 +623,24 @@ export default function QuickQuiz() {
 
     // Determine if it's a blend (top two within 1 point)
     const isBlend = secondaryStyle && Math.abs(primaryScore - secondaryScore) <= 1;
+    
+    console.log(`\n--- RESULT ---`);
+    console.log(`Primary: ${primaryStyle} (${primaryScore})`);
+    console.log(`Secondary: ${secondaryStyle} (${secondaryScore})`);
+    console.log(`Is blend: ${isBlend}`);
+    console.log(`Score difference: ${Math.abs(primaryScore - secondaryScore)}`);
 
-    return {
+    const result = {
       primary: primaryStyle,
       secondary: isBlend ? secondaryStyle : undefined,
       isBlend: !!isBlend,
       scores: finalScores
     };
+
+    console.log("Final result:", result);
+    console.log("=============================\n");
+
+    return result;
   };
 
   const handleAnswerSelect = (answerId: string) => {
@@ -647,7 +721,8 @@ export default function QuickQuiz() {
           // Calculate final result (including Q10 if it was answered)
           const finalResult = calculateResult(newScores, newAnswers["Q10"]);
           setResult(finalResult);
-          updateQuizResultsInDatabase(finalResult);
+          // Save analytics data including Q10 before updating database
+          updateQuizResultsInDatabase(finalResult, newAnalyticsData);
         }
       } else {
         setQuizState(prev => ({ ...prev, currentQuestionIndex: nextIndex }));
@@ -678,7 +753,12 @@ export default function QuickQuiz() {
     }
   };
 
-  const updateQuizResultsInDatabase = async (quizResult: QuizResult) => {
+  const updateQuizResultsInDatabase = async (quizResult: QuizResult, analyticsData?: Array<{
+    questionId: string
+    answerId: string
+    analyticsTag: string
+    timestamp: string
+  }>) => {
     let currentUser = JSON.parse(localStorage.getItem("current_influence_user") || "null");
     
     if (!currentUser) {
@@ -710,8 +790,9 @@ export default function QuickQuiz() {
     if (response.ok) {
       console.log("Quiz results updated successfully in database");
       
-      // Save quiz selections to database
-      await saveQuizSelectionsToDatabase(currentUser.id, quizState.analyticsData);
+      // Save quiz selections to database (use passed analyticsData or fall back to state)
+      const dataToSave = analyticsData || quizState.analyticsData;
+      await saveQuizSelectionsToDatabase(currentUser.id, dataToSave);
     } else {
       console.error("Failed to update quiz results in database");
     }
